@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Elector Appeal Dashboard</title>
+<style>
+:root{--bg:#f4f7fb;--card:#fff;--text:#172033;--muted:#687386;--line:#e5eaf1;--primary:#2457d6;--danger:#c93645}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;background:var(--bg);color:var(--text)}
+header{background:#172033;color:#fff;padding:18px 20px}.wrap{max-width:1200px;margin:auto;padding:18px}
+h1{font-size:22px;margin:0}h2{font-size:18px;margin:0 0 14px}.muted{color:var(--muted);font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:0 4px 18px rgba(23,32,51,.05);margin-bottom:16px}
+.stat b{display:block;font-size:26px;margin-top:6px}.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+label{font-size:12px;font-weight:700;display:block;margin-bottom:6px}input,select{width:100%;padding:11px;border:1px solid #ccd4df;border-radius:9px;background:#fff;font-size:15px}
+button{border:0;border-radius:9px;padding:11px 15px;font-weight:700;cursor:pointer}.primary{background:var(--primary);color:#fff}.dark{background:#263247;color:#fff}.danger{background:var(--danger);color:#fff}.light{background:#eef2f8;color:#263247}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.filters{display:flex;gap:10px;flex-wrap:wrap}.filters>*{max-width:220px}
+.tablebox{overflow:auto}table{border-collapse:collapse;width:100%;min-width:900px}th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;font-size:13px}th{background:#f8fafc;position:sticky;top:0}
+.pills{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}.pill{background:#f8fafc;border:1px solid var(--line);padding:10px;border-radius:10px}.pill b{float:right}
+.booth{border:1px solid var(--line);border-radius:12px;padding:13px;margin:10px 0}.booth h3{margin:0 0 10px}
+@media(max-width:600px){.wrap{padding:12px}.card{padding:13px}header{padding:16px}.stat b{font-size:22px}}
+@media print{header,.no-print,.entry-card{display:none!important}body{background:#fff}.wrap{max-width:none}.card{box-shadow:none;border:0;padding:0}.tablebox{overflow:visible}table{min-width:0;font-size:9px}th,td{font-size:9px;padding:5px}}
+</style>
+</head>
+<body>
+<header><div style="max-width:1200px;margin:auto"><h1>Elector Appeal Dashboard</h1><div style="opacity:.75;font-size:13px;margin-top:4px">Booth-wise data entry, analysis and PDF reporting</div></div></header>
+<main class="wrap">
+<section class="card entry-card">
+<h2>Add Elector Record</h2>
+<div class="form">
+<div><label>Part No. / Booth No.</label><input id="part" inputmode="numeric" placeholder="e.g. 1"></div>
+<div><label>Serial No.</label><input id="serial" placeholder="Serial number"></div>
+<div><label>EPIC No.</label><input id="epic" placeholder="EPIC number"></div>
+<div><label>Appeal ID</label><select id="appeal"><option value="">Select</option><option>17 C</option><option>17 D</option><option>17 E</option><option>17 F</option><option>20 G</option><option>20 O</option></select></div>
+<div><label>Status</label><select id="status"><option value="">Select</option><option>Excluded</option><option>Included</option><option>Pending</option></select></div>
+<div><label>Age Group</label><select id="age"><option value="">Select</option><option>18-25</option><option>26-35</option><option>36-45</option><option>46-55</option><option>&gt;55</option></select></div>
+<div><label>Gender</label><select id="gender"><option value="">Select</option><option>M</option><option>F</option></select></div>
+</div>
+<div class="actions"><button class="primary" onclick="addRecord()">Add Record</button></div>
+</section>
+
+<section id="overall"></section>
+
+<section class="card">
+<h2>Filter & Report</h2>
+<div class="filters no-print">
+<input id="search" placeholder="Search Serial / EPIC" oninput="render()">
+<select id="boothFilter" onchange="render()"><option value="">All Booths</option></select>
+<button class="dark" onclick="window.print()">Print / Save PDF</button>
+<button class="light" onclick="exportCSV()">Export CSV Backup</button>
+</div>
+<p class="muted">PDF uses the current booth filter. Choose a booth first to print a booth-only report.</p>
+</section>
+
+<section class="card"><h2>Booth-wise Summary</h2><div id="boothSummary"></div></section>
+
+<section class="card">
+<h2>Detailed Records</h2>
+<div class="tablebox"><table><thead><tr><th>Booth</th><th>Serial</th><th>EPIC</th><th>Appeal ID</th><th>Status</th><th>Age</th><th>Gender</th><th class="no-print">Action</th></tr></thead><tbody id="rows"></tbody></table></div>
+</section>
+</main>
+<script>
+const APPEALS=["17 C","17 D","17 E","17 F","20 G","20 O"], STATUSES=["Excluded","Included","Pending"], AGES=["18-25","26-35","36-45","46-55",">55"], GENDERS=["M","F"];
+let records=JSON.parse(localStorage.getItem("electorAppealRecords")||"[]");
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
+const count=(arr,key,val)=>arr.filter(x=>x[key]===val).length;
+function save(){localStorage.setItem("electorAppealRecords",JSON.stringify(records));render()}
+function addRecord(){
+ const r={part:part.value.trim(),serial:serial.value.trim(),epic:epic.value.trim().toUpperCase(),appeal:appeal.value,status:status.value,age:age.value,gender:gender.value};
+ if(Object.values(r).some(v=>!v))return alert("Please complete all fields.");
+ records.push(r);save();[part,serial,epic].forEach(x=>x.value="");[appeal,status,age,gender].forEach(x=>x.selectedIndex=0);
+}
+function del(i){if(confirm("Delete this record?")){records.splice(i,1);save()}}
+function pills(arr,items,key){return `<div class="pills">${items.map(v=>`<div class="pill">${esc(v)} <b>${count(arr,key,v)}</b></div>`).join("")}</div>`}
+function render(){
+ const booths=[...new Set(records.map(r=>r.part))].sort((a,b)=>Number(a)-Number(b));
+ const old=boothFilter.value;boothFilter.innerHTML='<option value="">All Booths</option>'+booths.map(b=>`<option>${esc(b)}</option>`).join("");boothFilter.value=old;
+ const q=search.value.trim().toLowerCase(), bf=boothFilter.value;
+ const shown=records.filter(r=>(!bf||r.part===bf)&&(!q||r.serial.toLowerCase().includes(q)||r.epic.toLowerCase().includes(q)));
+ overall.innerHTML=`<div class="grid">
+ <div class="card stat"><span class="muted">Total Electors</span><b>${shown.length}</b></div>
+ <div class="card stat"><span class="muted">Included</span><b>${count(shown,"status","Included")}</b></div>
+ <div class="card stat"><span class="muted">Excluded</span><b>${count(shown,"status","Excluded")}</b></div>
+ <div class="card stat"><span class="muted">Pending</span><b>${count(shown,"status","Pending")}</b></div>
+ <div class="card stat"><span class="muted">Male</span><b>${count(shown,"gender","M")}</b></div>
+ <div class="card stat"><span class="muted">Female</span><b>${count(shown,"gender","F")}</b></div></div>
+ <div class="card"><h2>Appeal ID Summary</h2>${pills(shown,APPEALS,"appeal")}</div>
+ <div class="card"><h2>Age Group Summary</h2>${pills(shown,AGES,"age")}</div>`;
+ boothSummary.innerHTML=booths.length?booths.map(b=>{let a=records.filter(r=>r.part===b);return `<div class="booth"><h3>Booth ${esc(b)} — ${a.length} Electors</h3><div class="muted" style="margin-bottom:8px">Included ${count(a,"status","Included")} · Excluded ${count(a,"status","Excluded")} · Pending ${count(a,"status","Pending")} · M ${count(a,"gender","M")} · F ${count(a,"gender","F")}</div>${pills(a,AGES,"age")}<div style="height:8px"></div>${pills(a,APPEALS,"appeal")}</div>`}).join(""):'<p class="muted">No booth data yet.</p>';
+ rows.innerHTML=shown.map(r=>{let i=records.indexOf(r);return `<tr><td>${esc(r.part)}</td><td>${esc(r.serial)}</td><td>${esc(r.epic)}</td><td>${esc(r.appeal)}</td><td>${esc(r.status)}</td><td>${esc(r.age)}</td><td>${esc(r.gender)}</td><td class="no-print"><button class="danger" onclick="del(${i})">Delete</button></td></tr>`}).join("")||'<tr><td colspan="8">No records found.</td></tr>';
+}
+function exportCSV(){
+ let lines=[["Booth","Serial No.","EPIC No.","Appeal ID","Status","Age","Gender"],...records.map(r=>[r.part,r.serial,r.epic,r.appeal,r.status,r.age,r.gender])];
+ let csv=lines.map(a=>a.map(v=>`"${String(v).replaceAll('"','""')}"`).join(",")).join("\n");
+ let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="elector-records.csv";a.click();
+}
+render();
+</script>
+</body>
+</html>
