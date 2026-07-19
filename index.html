@@ -996,7 +996,7 @@
     }
 
     // ============================================================
-    // AUTO-FILL LAST AC/PART (UPDATED)
+    // AUTO-FILL LAST AC/PART
     // ============================================================
     function autoFillLastACPart() {
       const lastAC = localStorage.getItem('lastAC') || '';
@@ -1029,7 +1029,7 @@
     }
 
     // ============================================================
-    // CLEAR FORM (UPDATED)
+    // CLEAR FORM
     // ============================================================
     function clearForm() {
       if (editIndex !== null) { 
@@ -1040,7 +1040,6 @@
       ["ac", "part", "serial", "epic"].forEach(id => document.getElementById(id).value = "");
       ["appeal", "status", "age", "gender"].forEach(id => document.getElementById(id).selectedIndex = 0);
       
-      // Clear stored auto-fill data
       localStorage.removeItem('lastAC');
       localStorage.removeItem('lastPart');
       
@@ -1159,7 +1158,7 @@
     }
 
     // ============================================================
-    // ADD RECORD (UPDATED)
+    // ADD RECORD
     // ============================================================
     function addRecord() {
       const get = id => document.getElementById(id);
@@ -1228,7 +1227,6 @@
       ["serial", "epic"].forEach(id => get(id).value = "");
       ["appeal", "status", "age", "gender"].forEach(id => get(id).selectedIndex = 0);
       
-      // Save last AC/Part for auto-fill
       localStorage.setItem('lastAC', ac);
       localStorage.setItem('lastPart', part);
       
@@ -1351,7 +1349,13 @@
         allKeys.add(key);
       });
       
-      const keys = Array.from(allKeys).sort();
+      // Numeric sorting: 1, 2, 10, 11 (not 1, 10, 11, 2)
+      const keys = Array.from(allKeys).sort((a, b) => {
+        const [acA, partA] = a.split('_');
+        const [acB, partB] = b.split('_');
+        if (Number(acA) !== Number(acB)) return Number(acA) - Number(acB);
+        return Number(partA) - Number(partB);
+      });
       
       let totalAppealed = 0;
       let totalElectors = 0;
@@ -1380,11 +1384,14 @@
         const [ac, part] = key.split('_');
         const total = electorData[key];
         const appealed = records.filter(r => r.ac === ac && r.part === part).length;
-        const displayTotal = (total !== undefined && total !== null) ? total : '?';
+        const hasData = (total !== undefined && total !== null);
+        const displayTotal = hasData ? total : '—';
         const displayAppealed = `${appealed}`;
+        // Highlight rows with no Total Electors data using slate (#f1f5f9)
+        const rowStyle = !hasData ? 'style="background:#f1f5f9;"' : '';
         
         return `
-          <tr>
+          <tr ${rowStyle}>
             <td><strong>${esc(ac)}</strong></td>
             <td><strong>${esc(part)}</strong></td>
             <td>${displayAppealed}</td>
@@ -1420,7 +1427,9 @@
       }
     }
 
-    // PDF Download Function
+    // ============================================================
+    // PDF DOWNLOAD (with all fixes)
+    // ============================================================
     function downloadElectorPDF() {
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF('landscape', 'mm', 'a4');
@@ -1431,19 +1440,39 @@
         const key = `${r.ac}_${r.part}`;
         allKeys.add(key);
       });
-      const keys = Array.from(allKeys).sort();
+      
+      // Numeric sorting: 1, 2, 10, 11
+      const keys = Array.from(allKeys).sort((a, b) => {
+        const [acA, partA] = a.split('_');
+        const [acB, partB] = b.split('_');
+        if (Number(acA) !== Number(acB)) return Number(acA) - Number(acB);
+        return Number(partA) - Number(partB);
+      });
       
       if (keys.length === 0) {
         alert('No data to download!');
         return;
       }
       
-      const rowsPerPage = 20;
-      const totalPages = Math.ceil(keys.length / rowsPerPage);
       const pageWidth = 297;
-      const margin = 14;
+      const margin = 30; // Increased margin for centered table
       const tableWidth = pageWidth - (margin * 2);
-      const colWidths = [35, 35, 45, 45];
+      const colWidths = [
+        tableWidth * 0.20, // AC No. - 20%
+        tableWidth * 0.25, // Part No. - 25%
+        tableWidth * 0.25, // Appealed - 25%
+        tableWidth * 0.30  // Total Electors - 30%
+      ];
+      
+      // Dynamic rows per page based on page height
+      const headerHeight = 48;
+      const rowHeight = 9;
+      const footerHeight = 20;
+      const maxRowsPerPage = Math.floor((297 - headerHeight - footerHeight - margin) / rowHeight);
+      const rowsPerPage = Math.max(10, maxRowsPerPage);
+      const totalPages = Math.ceil(keys.length / rowsPerPage);
+      
+      let currentAC = '';
       
       for (let page = 0; page < totalPages; page++) {
         if (page > 0) doc.addPage();
@@ -1511,12 +1540,24 @@
         
         y += 10;
         let rowNum = 0;
+        currentAC = '';
+        
         pageKeys.forEach(key => {
           const [ac, part] = key.split('_');
-          const total = electorData[key] || '?';
+          const total = electorData[key] || '—';
           const appealed = records.filter(r => r.ac === ac && r.part === part).length;
           const displayAppealed = `${appealed}`;
-          const row = [ac, part, displayAppealed, total];
+          
+          // Show AC only for first row of each AC group
+          const showAC = (ac !== currentAC);
+          currentAC = ac;
+          
+          const row = [
+            showAC ? ac : '',  // AC only for first row
+            part,
+            displayAppealed,
+            total
+          ];
           
           if (rowNum % 2 === 0) {
             doc.setFillColor(241, 245, 249);
@@ -1527,7 +1568,9 @@
           doc.setFontSize(11);
           x = margin;
           row.forEach((val, i) => {
-            if (i < 2) {
+            if (i === 0 && val !== '') {
+              doc.setFont('helvetica', 'bold');
+            } else if (i < 2) {
               doc.setFont('helvetica', 'bold');
             } else {
               doc.setFont('helvetica', 'normal');
@@ -1569,7 +1612,7 @@
     }
 
     // ============================================================
-    // BACKUP (UPDATED)
+    // BACKUP
     // ============================================================
     function backupData() {
       if (!records.length) return alert("No records to backup!");
@@ -1582,7 +1625,7 @@
     }
 
     // ============================================================
-    // RESTORE (UPDATED)
+    // RESTORE
     // ============================================================
     function restoreData(event) {
       const file = event.target.files[0];
@@ -1637,7 +1680,6 @@
                 if (!trash.some(tr => tr.epic === t.epic)) trash.push(t);
               });
             }
-            // Merge Elector Data
             Object.keys(restoreElectorData).forEach(key => {
               if (!electorData[key]) {
                 electorData[key] = restoreElectorData[key];
@@ -1732,7 +1774,7 @@
               (r.ac === newRecord.ac && r.part === newRecord.part && r.serial === newRecord.serial)
             );
             if (!exists) {
-              const r = {
+              records.push({
                 ac: newRecord.ac || '',
                 part: newRecord.part || '',
                 serial: newRecord.serial || '',
@@ -1741,8 +1783,7 @@
                 status: newRecord.status || '',
                 age: newRecord.age || '',
                 gender: newRecord.gender || ''
-              };
-              records.push(r);
+              });
               added++;
             }
           });
